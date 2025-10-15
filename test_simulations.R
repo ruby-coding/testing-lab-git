@@ -5,3 +5,7 @@ test_that("true seq creation function works", {
   expect_true(all(colSums(make_true_seqs(20, 3)) < 3))
   expect_true(all(make_true_seqs(15, 4) %in% c(0,1)))
 })
+test_that("simulate_reads() allows specifying number of nonzero sites", {
+  result <- simulate_reads(num_nonzero = 3)
+  expect_equal(sum(result != 0), 3)
+})
