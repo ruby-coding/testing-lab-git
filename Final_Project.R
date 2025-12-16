@@ -174,5 +174,131 @@ legend("bottomleft",
 cat("Tecumseh epsilon =", res_tec$eps, "\n")
 cat("Seattle epsilon   =", res_sea$eps, "\n")
 
+############################
+## 7. TESTS (readable + expected output)
+############################
+
+run_tests <- function() {
+  cat("\n============================\n")
+  cat("RUNNING PROJECT TESTS\n")
+  cat("============================\n")
+  
+  ## Helper: pretty pass/fail
+  check <- function(name, condition, expected) {
+    if (isTRUE(condition)) {
+      cat(sprintf("[PASS] %s | Expected: %s\n", name, expected))
+    } else {
+      cat(sprintf("[FAIL] %s | Expected: %s\n", name, expected))
+      stop(sprintf("Test failed: %s", name))
+    }
+  }
+  
+  ## ---------------------------
+  ## Test 1: wjs_matrix() validity
+  ## ---------------------------
+  set.seed(1)
+  qh_test <- 0.7
+  qc_test <- 0.8
+  max_s_test <- 5
+  W <- wjs_matrix(qh_test, qc_test, max_s_test)
+  
+  # Expected: no negative probabilities after cleanup
+  check("wjs_matrix: nonnegative entries",
+        all(W >= -1e-12),
+        "All entries >= 0")
+  
+  # Expected: each column sums to 1 (within tolerance)
+  cs <- colSums(W)
+  check("wjs_matrix: column sums = 1",
+        all(abs(cs - 1) < 1e-10),
+        "Each household-size column sums to 1")
+  
+  # Expected: entries above j>s are exactly 0 (or extremely close)
+  upper_ok <- TRUE
+  for (s in 1:max_s_test) {
+    # valid rows are 1:(s+1); rows beyond that should be 0
+    if (s + 2 <= nrow(W)) {
+      upper_ok <- upper_ok && all(abs(W[(s + 2):nrow(W), s]) < 1e-12)
+    }
+  }
+  check("wjs_matrix: invalid j>s rows are zero",
+        upper_ok,
+        "W[j,s] = 0 for j>s")
+  
+  cat("\n--- wjs_matrix() basic checks passed ---\n")
+  
+  ## ---------------------------
+  ## Test 2: simulate_counts() preserves household totals
+  ## ---------------------------
+  set.seed(2)
+  obs_small <- tec_77  # use real observed table
+  D_star <- simulate_counts(qh = 0.6, qc = 0.7, obs_counts = obs_small)
+  
+  # Expected: same number of households per size (column sums preserved)
+  check("simulate_counts: column sums preserved",
+        all(colSums(D_star) == colSums(obs_small)),
+        "colSums(sim) == colSums(obs)")
+  
+  # Expected: simulated counts are integers and nonnegative
+  check("simulate_counts: integer nonnegative counts",
+        all(D_star >= 0) && all(abs(D_star - round(D_star)) < 1e-12),
+        "All entries are nonnegative integers")
+  
+  cat("\n--- simulate_counts() basic checks passed ---\n")
+  
+  ## ---------------------------
+  ## Test 3: distance behaves sensibly
+  ## ---------------------------
+  set.seed(3)
+  theta_same <- c(0.6, 0.7, 0.6, 0.7)
+  
+  # Expected: distance is nonnegative
+  d <- distance_two_outbreaks(theta_same, tec_77, tec_80)
+  check("distance_two_outbreaks: nonnegative",
+        d >= 0,
+        "distance >= 0 always")
+  
+  cat("\n--- distance function basic checks passed ---\n")
+  
+  ## ---------------------------
+  ## Test 4: ABC returns correct shapes + acceptance fraction roughly right
+  ## ---------------------------
+  set.seed(4)
+  N_test <- 20000
+  frac_test <- 0.01
+  res <- abc_rejection_4param(tec_77, tec_80, N = N_test, accept_frac = frac_test)
+  
+  # Expected: theta has 4 columns
+  check("abc_rejection_4param: theta has 4 columns",
+        is.matrix(res$theta) && ncol(res$theta) == 4,
+        "ncol(theta) = 4")
+  
+  # Expected: all accepted distances <= eps
+  check("abc_rejection_4param: dist <= eps for accepted",
+        all(res$dist <= res$eps + 1e-12),
+        "Accepted samples satisfy dist <= eps")
+  
+  # Expected: number accepted approximately N*accept_frac (ties can increase slightly)
+  expected_accept <- N_test * frac_test
+  actual_accept <- nrow(res$theta)
+  check("abc_rejection_4param: acceptance count reasonable",
+        actual_accept >= expected_accept && actual_accept <= expected_accept * 1.5,
+        "Accepted >= N*frac and not wildly larger (ties allowed)")
+  
+  # Expected: eps equals chosen quantile of full distance distribution in principle
+  # (We don't have full dists returned, so we test eps is numeric and nonnegative.)
+  check("abc_rejection_4param: epsilon numeric and >=0",
+        is.numeric(res$eps) && length(res$eps) == 1 && res$eps >= 0,
+        "eps is a single nonnegative number")
+  
+  cat("\n--- ABC rejection basic checks passed ---\n")
+  
+  cat("\n✅ ALL TESTS PASSED.\n")
+  invisible(TRUE)
+}
+
+# Run tests 
+run_tests()
+
 
 
